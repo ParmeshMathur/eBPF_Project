@@ -11,6 +11,8 @@
 #define IFNAMSIZ       IF_NAMESIZE
 #define 	XT_TABLE_MAXNAMELEN   32
 
+#define ETH_HLEN    14
+
 struct route_evt_t {
     u64 flags;
 
@@ -18,6 +20,7 @@ struct route_evt_t {
     u64 netns;
 
     u64 ip_version; 
+    u8 ipproto;
     u64 saddr[2]; 
     u64 daddr[2];
     u64 fib_res_addr[2];
@@ -63,62 +66,67 @@ static inline int do_trace_skb(struct route_evt_t *evt, void *ctx, struct sk_buf
 {
     evt->flags |= ROUTE_EVT_IF;
 
-    char* head;
+    // char* head;
+    char head[sizeof(skb->head)];
     u16 mac_header;
     u16 network_header;
 
-    bpf_core_read(&head, sizeof(skb->head), GET_ADDRESS(skb, head));
-    bpf_core_read(&mac_header, sizeof(skb->mac_header), GET_ADDRESS(skb, mac_header));
-    bpf_core_read(&network_header, sizeof(skb->network_header), GET_ADDRESS(skb,network_header));
+    bpf_printk("do_trace_skb");
 
-    if(network_header == 0) {
-        network_header = mac_header + MAC_HEADER_SIZE;
-    }
+    int err = bpf_skb_load_bytes(skb, offsetof(struct sk_buff, head), head, sizeof(skb->head));
 
-    char *ip_header_address = head + network_header;
+//     bpf_core_read(&head, sizeof(skb->head), GET_ADDRESS(skb, head));
+//     bpf_core_read(&mac_header, sizeof(skb->mac_header), GET_ADDRESS(skb, mac_header));
+//     bpf_core_read(&network_header, sizeof(skb->network_header), GET_ADDRESS(skb,network_header));
 
-    u8 l4proto;
+//     if(network_header == 0) {
+//         network_header = mac_header + MAC_HEADER_SIZE;
+//     }
 
-    bpf_core_read(&evt->ip_version, sizeof(u8), ip_header_address);
-    evt->ip_version = evt->ip_version >> 4 & 0xf;
+//     char *ip_header_address = head + network_header;
 
-    if (evt->ip_version == 4) {
-        struct iphdr iphdr;
-        bpf_core_read(&iphdr, sizeof(iphdr), ip_header_address);
+//     u8 l4proto;
 
-        l4proto      = iphdr.protocol;
-        evt->saddr[0] = iphdr.saddr;
-        evt->daddr[0] = iphdr.daddr;
+//     bpf_core_read(&evt->ip_version, sizeof(u8), ip_header_address);
+//     evt->ip_version = evt->ip_version >> 4 & 0xf;
 
-    } else if (evt->ip_version == 6) {
-        struct ipv6hdr* ipv6hdr = (struct ipv6hdr*)ip_header_address;
+//     if (evt->ip_version == 4) {
+//         struct iphdr iphdr;
+//         bpf_core_read(&iphdr, sizeof(iphdr), ip_header_address);
 
-        bpf_core_read(&l4proto,  sizeof(ipv6hdr->nexthdr),  (char*)ipv6hdr + offsetof(struct ipv6hdr, nexthdr));
-        bpf_core_read(evt->saddr, sizeof(ipv6hdr->saddr),   (char*)ipv6hdr + offsetof(struct ipv6hdr, saddr));
-        bpf_core_read(evt->daddr, sizeof(ipv6hdr->daddr),   (char*)ipv6hdr + offsetof(struct ipv6hdr, daddr));
+//         l4proto      = iphdr.protocol;
+//         evt->saddr[0] = iphdr.saddr;
+//         evt->daddr[0] = iphdr.daddr;
 
-    } else {
-        return -1;
-    }
+//     } else if (evt->ip_version == 6) {
+//         struct ipv6hdr* ipv6hdr = (struct ipv6hdr*)ip_header_address;
 
-    //bpf_printk("IP version : %d",evt->ip_version);
-    //bpf_printk("Protocol : %d",l4proto);
+//         bpf_core_read(&l4proto,  sizeof(ipv6hdr->nexthdr),  (char*)ipv6hdr + offsetof(struct ipv6hdr, nexthdr));
+//         bpf_core_read(evt->saddr, sizeof(ipv6hdr->saddr),   (char*)ipv6hdr + offsetof(struct ipv6hdr, saddr));
+//         bpf_core_read(evt->daddr, sizeof(ipv6hdr->daddr),   (char*)ipv6hdr + offsetof(struct ipv6hdr, daddr));
 
-    struct net_device *dev;
-    bpf_core_read(&dev, sizeof(skb->dev), GET_ADDRESS(skb, dev));
+//     } else {
+//         return -1;
+//     }
 
-    bpf_core_read(&evt->ifname, IFNAMSIZ, &dev->name);
+//     //bpf_printk("IP version : %d",evt->ip_version);
+//     //bpf_printk("Protocol : %d",l4proto);
 
-    //bpf_printk("IfName : %s",evt->ifname);
+//     struct net_device *dev;
+//     bpf_core_read(&dev, sizeof(skb->dev), GET_ADDRESS(skb, dev));
 
-#ifdef CONFIG_NET_NS
-    struct net* net;
+//     bpf_core_read(&evt->ifname, IFNAMSIZ, &dev->name);
 
-    possible_net_t *skc_net = &dev->nd_net;
-    bpf_core_read(&net, sizeof(skc_net->net), GET_ADDRESS(skc_net,net));
-    struct ns_common* ns = GET_ADDRESS(net, ns);
-    bpf_core_read(&evt->netns, sizeof(ns->inum), GET_ADDRESS(ns, inum));
-#endif
+//     //bpf_printk("IfName : %s",evt->ifname);
+
+// #ifdef CONFIG_NET_NS
+//     struct net* net;
+
+//     possible_net_t *skc_net = &dev->nd_net;
+//     bpf_core_read(&net, sizeof(skc_net->net), GET_ADDRESS(skc_net,net));
+//     struct ns_common* ns = GET_ADDRESS(net, ns);
+//     bpf_core_read(&evt->netns, sizeof(ns->inum), GET_ADDRESS(ns, inum));
+// #endif
 
     return 0;
 }
@@ -173,24 +181,75 @@ static inline int parse_ip_table_output(struct pt_regs * ctx)
     return 0;
 }
 
+SEC("tp/net/net_dev_queue")
+int tracepoint_net_dev_queue(struct trace_event_raw_net_dev_template *ctx)
+{
+    struct route_evt_t evt = {};
+    // void* ctx;
+    return do_trace_skb(&evt, ctx, (struct sk_buff *)ctx->skbaddr);
+    // bpf_printk("tracepoint_netdevqueue");
+    // return 0;
+}
+
+// SEC("tp/net/netif_receive_skb")
+// int tracepoint_netif_receive_skb(void* ctx, struct sk_buff *skb)
+// {
+//     struct route_evt_t evt = {};
+//     // void* ctx;
+//     if(skb==0)
+//     {
+//         bpf_printk("skb is null");
+//         return 0;
+//     }
+//     return do_trace_skb(&evt, ctx, skb);
+//     // bpf_printk("tracepoint_netifrcvskb");
+//     // return 0;
+// }
+
+SEC("tp/net/netif_receive_skb")
+int tracepoint_netif_receive_skb(struct trace_event_raw_net_dev_template *ctx)
+{
+    struct route_evt_t evt = {};
+    // void* ctx;
+    return do_trace_skb(&evt, ctx, (struct sk_buff *)ctx->skbaddr);
+    // bpf_printk("tracepoint_netdevqueue");
+    // return 0;
+} 
+
+// SEC("kprobe/net_dev_queue")
+// int kprobe__net_dev_queue(struct sk_buff *skb)
+// {
+//     struct route_evt_t evt = {};
+//     void* ctx;
+//     return do_trace_skb(&evt, ctx, skb);
+// }
+
+// SEC("kprobe/netif_receive_skb")
+// int kprobe__netif_receive_skb(struct sk_buff *skb)
+// {
+//     struct route_evt_t evt = {};
+//     void* ctx;
+//     return do_trace_skb(&evt, ctx, skb);
+// }
+
 /*
  * Kernel probes for iptables
  */
 
-SEC("kprobe/ipt_do_table")
+// SEC("kprobe/ipt_do_table")
 
-int BPF_KPROBE(kprobe__ipt_do_table, struct sk_buff *skb, const struct nf_hook_state *state, struct xt_table *table)
-{
-    bpf_printk("kprobe");
-    return parse_ip_table_input(ctx, skb, state, table);
-};
+// int BPF_KPROBE(kprobe__ipt_do_table, struct sk_buff *skb, const struct nf_hook_state *state, struct xt_table *table)
+// {
+//     bpf_printk("kprobe");
+//     return parse_ip_table_input(ctx, skb, state, table);
+// };
 
-SEC("kretprobe/ipt_do_table")
+// SEC("kretprobe/ipt_do_table")
 
-int BPF_KRETPROBE(kretprobe__ipt_do_table)
-{
-    bpf_printk("kretprobe");
-    return parse_ip_table_output(ctx);
-}
+// int BPF_KRETPROBE(kretprobe__ipt_do_table)
+// {
+//     bpf_printk("kretprobe");
+//     return parse_ip_table_output(ctx);
+// }
 
 char LICENSE[] SEC("license") = "GPL";

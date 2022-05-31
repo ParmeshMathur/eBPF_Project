@@ -42,6 +42,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
     		__u64 netns;
 
     		__u64 ip_version;
+    		__u8 ipproto;
     		__u64 saddr[2];
     		__u64 daddr[2];
     		__u64 fib_res_addr[2];
@@ -52,7 +53,8 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
    		__u64 hook;
     		__u64 verdict;
     		char tablename[XT_TABLE_MAXNAMELEN];
-	} *e = data;
+	};
+	struct route_evt_t* e = (struct route_evt_t*)data;
 
 	struct in_addr sip_addr;
     	sip_addr.s_addr = e->saddr[0];
@@ -60,7 +62,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 	struct in_addr dip_addr;
         dip_addr.s_addr = e->daddr[0];
 
-	printf("\n%*u | %*s | %*llu | %*llu | %*llu | %*s | %*s", -6, e->pid, 10, e->ifname, -6, e->flags, -5, e->netns, -10, e->ip_version, -18, inet_ntoa(sip_addr), -16, inet_ntoa(dip_addr));
+	printf("\n%*u | %*s | %*llu | %*llu | %*llu | %*s | %*s | %llu | %s", -6, e->pid, 10, e->ifname, -6, e->flags, -5, e->netns, -10, e->ip_version, -18, inet_ntoa(sip_addr), -16, inet_ntoa(dip_addr), e->hook, e->tablename);
 
 	cnt++;
 
@@ -71,6 +73,29 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 	}
 }
 
+void trace_reader()
+{
+	int trace_fd = open("/sys/kernel/debug/tracing/trace_pipe", O_RDONLY, 0);
+	if(trace_fd<0) return;
+	// TODO: make a map fd and read from that instead of from trace pipe
+	int count = 0;
+
+	while(1)
+	{
+		char buffer[1024];
+		size_t sz;
+		
+
+		sz = read(trace_fd, buffer, sizeof(buffer)-1);
+		if(sz>0) 
+		{
+			count++;
+			buffer[sz]=0;
+			// printf("%d\t", count);
+			puts(buffer);
+		}
+	}
+}
 
 int main(int argc, char **argv)
 {
@@ -81,7 +106,7 @@ int main(int argc, char **argv)
 
 	int map_fd, ret = 0;
 
-	char titles[][13] = {"PID", "IF NAME", "FLAGS", "NETNS", "IP VERSION", "SRC ADDRESS", "DEST ADDRESS"};
+	char titles[][13] = {"PID", "IF NAME", "FLAGS", "NETNS", "IP VERSION", "SRC ADDRESS", "DEST ADDRESS", "HOOK", "T_NAME"};
 
 	struct rlimit rlim = {
 		.rlim_cur = 512UL << 20,
@@ -127,12 +152,13 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	printf("\n%*s | %*s | %*s | %*s | %*s | %*s  | %*s", -6, titles[0], 10, titles[1], -6, titles[2], -5, titles[3], -10, titles[4], -17, titles[5], -15, titles[6]);
+	printf("\n%*s | %*s | %*s | %*s | %*s | %*s  | %*s | %s | %s", -6, titles[0], 10, titles[1], -6, titles[2], -5, titles[3], -10, titles[4], -17, titles[5], -15, titles[6], titles[7], titles[8]);
 
 	start_time = time_get_ns();
-	while ((ret = perf_buffer__poll(pb, 1000)) >= 0 && cnt < MAX_CNT) {
-	}
-	kill(0, SIGINT);
+	// while ((ret = perf_buffer__poll(pb, 1000)) >= 0 && cnt < MAX_CNT) {
+	// }
+	// kill(0, SIGINT);
+	trace_reader();
 
 cleanup:
 	capture_bpf__destroy(obj);
