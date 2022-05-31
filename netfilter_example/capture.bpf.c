@@ -1,7 +1,7 @@
 #include "vmlinux.h"
-#include "bpf_helpers.h"
-#include "bpf_core_read.h"
-#include "bpf_tracing.h"
+#include <bpf/bpf_helpers.h>
+#include <bpf/bpf_core_read.h>
+#include <bpf/bpf_tracing.h>
 
 #define ROUTE_EVT_IF 1
 #define ROUTE_EVT_IPTABLE 2
@@ -9,7 +9,7 @@
 
 #define IF_NAMESIZE     16
 #define IFNAMSIZ       IF_NAMESIZE
-#define 	XT_TABLE_MAXNAMELEN   32
+#define XT_TABLE_MAXNAMELEN   32
 
 #define ETH_HLEN    14
 
@@ -152,7 +152,7 @@ static inline int parse_ip_table_output(struct pt_regs * ctx)
 {
     u32 pid = bpf_get_current_pid_tgid();
     struct ipt_do_table_args *args;
-    args = bpf_map_lookup_elem(&cur_ipt_do_table_args,&pid);
+    args = bpf_map_lookup_elem(&cur_ipt_do_table_args, &pid);
     if (args == 0) {
         return 0;
     }

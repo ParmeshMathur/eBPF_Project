@@ -1,4 +1,4 @@
-#include "libbpf.h"
+#include <bpf/libbpf.h>
 #include "capture.skel.h"
 
 #include <sys/types.h>
@@ -50,7 +50,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
     		unsigned char fib_res_type;
 
     		__u32 pid;
-   		__u64 hook;
+	   		__u64 hook;
     		__u64 verdict;
     		char tablename[XT_TABLE_MAXNAMELEN];
 	};
@@ -133,11 +133,11 @@ int main(int argc, char **argv)
 		goto cleanup;
 	}
 
-        map_fd = bpf_map__fd(obj->maps.route_evt);
-        if (map_fd < 0) {
-                fprintf(stderr, "ERROR: finding a map in obj file failed\n");
-                goto cleanup;
-        }
+    map_fd = bpf_map__fd(obj->maps.route_evt);
+    if (map_fd < 0) {
+            fprintf(stderr, "ERROR: finding a map in obj file failed\n");
+            goto cleanup;
+    }
 
 	err = capture_bpf__attach(obj);
 	if (err) {
