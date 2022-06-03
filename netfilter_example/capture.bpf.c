@@ -105,9 +105,14 @@ static inline int do_trace_skb(struct route_evt_t *evt, void *ctx, struct sk_buf
 //         bpf_core_read(evt->saddr, sizeof(ipv6hdr->saddr),   (char*)ipv6hdr + offsetof(struct ipv6hdr, saddr));
 //         bpf_core_read(evt->daddr, sizeof(ipv6hdr->daddr),   (char*)ipv6hdr + offsetof(struct ipv6hdr, daddr));
 
+<<<<<<< HEAD
 //     } else {
 //         return -1;
 //     }
+=======
+    bpf_printk("IP version : %d",evt->ip_version);
+    bpf_printk("Protocol : %d",l4proto);
+>>>>>>> 2788d5f736311d220324b11f8d70facdfbf82987
 
 //     //bpf_printk("IP version : %d",evt->ip_version);
 //     //bpf_printk("Protocol : %d",l4proto);
@@ -115,7 +120,11 @@ static inline int do_trace_skb(struct route_evt_t *evt, void *ctx, struct sk_buf
 //     struct net_device *dev;
 //     bpf_core_read(&dev, sizeof(skb->dev), GET_ADDRESS(skb, dev));
 
+<<<<<<< HEAD
 //     bpf_core_read(&evt->ifname, IFNAMSIZ, &dev->name);
+=======
+    bpf_printk("IfName : %s",evt->ifname);
+>>>>>>> 2788d5f736311d220324b11f8d70facdfbf82987
 
 //     //bpf_printk("IfName : %s",evt->ifname);
 
@@ -251,5 +260,77 @@ int tracepoint_netif_receive_skb(struct trace_event_raw_net_dev_template *ctx)
 //     bpf_printk("kretprobe");
 //     return parse_ip_table_output(ctx);
 // }
+
+SEC("tp/net/net_dev_queue")
+int tracepoint_net_dev_queue(struct trace_event_raw_net_dev_template *ctx)
+{
+	struct route_evt_t evt = {};
+	do_trace_skb(&evt, ctx, (struct sk_buff *)ctx->skbaddr);
+	bpf_perf_event_output(ctx, &route_evt, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
+	return 0;
+}
+
+static inline int do_trace(void *ctx, struct sk_buff *skb)
+{
+    struct route_evt_t evt = {};
+
+    int ret = do_trace_skb(&evt, ctx, skb);
+    if(ret == -1)
+	return 0;
+    bpf_perf_event_output(ctx, &route_evt, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
+    return ret;
+}
+
+/**
+ * Kernel probes and tracepoints for capturing packet
+ * on the inner interface(eni/eth)
+ */
+SEC("kprobe/netif_rx")
+int BPF_KPROBE(kprobe__netif_rx, struct sk_buff *skb)
+{
+    return do_trace(ctx, skb);
+}
+
+SEC("kprobe/tpacket_rcv")
+int BPF_KPROBE(kprobe__tpacket_rcv, struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
+{
+    return do_trace(ctx, skb);
+}
+
+SEC("kprobe/packet_rcv")
+int BPF_KPROBE(kprobe__packet_rcv, struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
+{
+    return do_trace(ctx, skb);
+}
+
+SEC("kprobe/napi_gro_receive")
+int BPF_KPROBE(kprobe__napi_gro_receive, struct napi_struct *napi, struct sk_buff *skb)
+{
+    return do_trace(ctx, skb);
+}
+
+SEC("kprobe/ip_rcv")
+int BPF_KPROBE(kprobe__ip_rcv, struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
+{
+   return do_trace(ctx, skb);
+}
+
+SEC("kprobe/ip_rcv_finish")
+int BPF_KPROBE(kprobe__ip_rcv_finish, struct net *net, struct sock *sk, struct sk_buff *skb)
+{
+   return do_trace(ctx, skb);
+}
+
+SEC("kprobe/ip_output")
+int BPF_KPROBE(kprobe__ip_output, struct net *net, struct sock *sk, struct sk_buff *skb)
+{
+   return do_trace(ctx, skb);
+}
+
+SEC("kprobe/ip_finish_output")
+int BPF_KPROBE(kprobe__ip_finish_output, struct net *net, struct sock *sk, struct sk_buff *skb)
+{
+   return do_trace(ctx, skb);
+}
 
 char LICENSE[] SEC("license") = "GPL";

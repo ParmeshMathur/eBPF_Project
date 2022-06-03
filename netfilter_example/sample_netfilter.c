@@ -100,7 +100,7 @@ void trace_reader()
 int main(int argc, char **argv)
 {
 	struct capture_bpf *obj;
-	struct perf_buffer *pb;
+	struct perf_buffer *pb = NULL;
 
 	int err = 0;
 
@@ -155,12 +155,23 @@ int main(int argc, char **argv)
 	printf("\n%*s | %*s | %*s | %*s | %*s | %*s  | %*s | %s | %s", -6, titles[0], 10, titles[1], -6, titles[2], -5, titles[3], -10, titles[4], -17, titles[5], -15, titles[6], titles[7], titles[8]);
 
 	start_time = time_get_ns();
+<<<<<<< HEAD
 	// while ((ret = perf_buffer__poll(pb, 1000)) >= 0 && cnt < MAX_CNT) {
 	// }
 	// kill(0, SIGINT);
 	trace_reader();
+=======
+
+	while ((ret = perf_buffer__poll(pb, 1000)) >= 0 && cnt < MAX_CNT) {
+	}
+	kill(0, SIGINT);
+>>>>>>> 2788d5f736311d220324b11f8d70facdfbf82987
 
 cleanup:
+	if(!pb) 
+	{
+		perf_buffer__free(pb);
+	}
 	capture_bpf__destroy(obj);
 	return err != 0;
 }
